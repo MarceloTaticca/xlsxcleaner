@@ -22,39 +22,48 @@ def index():
         df = xls[first_sheet_name]
 
         # === Begin Data Processing (the cleaning steps) ===
+        # Filter rows where either 'Unnamed: 2' or 'Unnamed: 5' is not null.
         f_mask = (~df['Unnamed: 2'].isnull()) | (~df['Unnamed: 5'].isnull())
         df = df[f_mask]
-        # Drop columns where all values are NaN, empty, or whitespace
-        df_cleaned = df.loc[:, ~df.apply(lambda col: col.astype(str).str.strip().replace('nan', '').eq('').all())]
-        # Fill forward (ffill) to repeat non-empty values downward
-        df_cleaned.loc[:, 'Unnamed: 5'] = df_cleaned['Unnamed: 5'].ffill()
-        # Delete header rows
+        
+        # Drop columns where all values are NaN, empty, or whitespace,
+        # and make a copy to ensure we have a standalone DataFrame.
+        df_cleaned = df.loc[:, ~df.apply(lambda col: col.astype(str).str.strip().replace('nan', '').eq('').all())].copy()
+        
+        # Fill forward (ffill) to repeat non-empty values downward.
+        df_cleaned['Unnamed: 5'] = df_cleaned['Unnamed: 5'].ffill()
+        
+        # Delete header rows, and copy to avoid chained assignment issues.
         f_mask = (~df_cleaned['Unnamed: 2'].isnull())
-        df_cleaned = df_cleaned[f_mask]
-        # Drop columns where all values are NaN, empty, or whitespace (again)
+        df_cleaned = df_cleaned[f_mask].copy()
+        
+        # Drop columns where all values are NaN, empty, or whitespace (again).
         df_cleaned = df_cleaned.loc[:, ~df_cleaned.apply(lambda col: col.astype(str).str.strip().replace('nan', '').eq('').all())]
-        # Rename seven columns
+        
+        # Rename seven columns.
         df_cleaned.columns = ['data', 'plano', 'origem', 'histÛrico', 'valor', 'operaÁ„o', 'usu·rio']
-        # Convert "valor" column from Brazilian format to numeric floats
+        
+        # Convert "valor" column from Brazilian format to numeric floats.
         df_cleaned['valor'] = (
             df_cleaned['valor']
             .astype(str)
             .str.replace('.', '', regex=False)   # remove thousand separator '.'
-            .str.replace(',', '.', regex=False)  # replace decimal ',' with '.'
-            .replace('', '0')                    # handle empty strings
+            .str.replace(',', '.', regex=False)    # replace decimal ',' with '.'
+            .replace('', '0')                      # handle empty strings
             .astype(float)
         )
-        # Convert "data" from text to datetime and format to YYYY-MM-DD
+        
+        # Convert "data" from text to datetime and format to YYYY-MM-DD.
         df_cleaned['data'] = pd.to_datetime(df_cleaned['data'], format='%d/%m/%Y', errors='coerce').dt.strftime('%Y-%m-%d')
         # === End Data Processing ===
 
-        # Write the original sheets + cleaned data into a new Excel file in memory
+        # Write the original sheets plus the cleaned data into a new Excel file in memory.
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             # Write each original sheet back into the output workbook.
             for sheet_name, dataframe in xls.items():
                 dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
-            # Add a new sheet for the cleaned data
+            # Add a new sheet for the cleaned data.
             df_cleaned.to_excel(writer, sheet_name='Cleaned Data', index=False)
             writer.save()
         output.seek(0)
