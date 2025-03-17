@@ -17,28 +17,32 @@ def index():
         except Exception as e:
             return f"Error reading Excel file: {e}", 400
 
-        # Get the first sheet's name and data
+        # Get the first sheet's name and data.
         first_sheet_name = list(xls.keys())[0]
         df = xls[first_sheet_name]
 
         # === Begin Data Processing (the cleaning steps) ===
         # Filter rows where either 'Unnamed: 2' or 'Unnamed: 5' is not null.
         f_mask = (~df['Unnamed: 2'].isnull()) | (~df['Unnamed: 5'].isnull())
-        df = df[f_mask]
+        df = df[f_mask].copy()
         
-        # Drop columns where all values are NaN, empty, or whitespace,
-        # and make a copy to ensure we have a standalone DataFrame.
-        df_cleaned = df.loc[:, ~df.apply(lambda col: col.astype(str).str.strip().replace('nan', '').eq('').all())].copy()
+        # Drop columns where all values are NaN, empty, or whitespace.
+        # This version strips and replaces 'nan' with an empty string, then keeps only columns with at least one non-empty value.
+        df_cleaned = df.loc[:, df.astype(str).apply(
+            lambda col: col.str.strip().replace('nan', '').ne('').any()
+        )].copy()
         
         # Fill forward (ffill) to repeat non-empty values downward.
         df_cleaned['Unnamed: 5'] = df_cleaned['Unnamed: 5'].ffill()
         
-        # Delete header rows, and copy to avoid chained assignment issues.
+        # Delete header rows.
         f_mask = (~df_cleaned['Unnamed: 2'].isnull())
         df_cleaned = df_cleaned[f_mask].copy()
         
-        # Drop columns where all values are NaN, empty, or whitespace (again).
-        df_cleaned = df_cleaned.loc[:, ~df_cleaned.apply(lambda col: col.astype(str).str.strip().replace('nan', '').eq('').all())]
+        # Drop columns again where all values are NaN, empty, or whitespace.
+        df_cleaned = df_cleaned.loc[:, df_cleaned.astype(str).apply(
+            lambda col: col.str.strip().replace('nan', '').ne('').any()
+        )]
         
         # Rename seven columns.
         df_cleaned.columns = ['data', 'plano', 'origem', 'histÛrico', 'valor', 'operaÁ„o', 'usu·rio']
@@ -54,7 +58,9 @@ def index():
         )
         
         # Convert "data" from text to datetime and format to YYYY-MM-DD.
-        df_cleaned['data'] = pd.to_datetime(df_cleaned['data'], format='%d/%m/%Y', errors='coerce').dt.strftime('%Y-%m-%d')
+        df_cleaned['data'] = pd.to_datetime(
+            df_cleaned['data'], format='%d/%m/%Y', errors='coerce'
+        ).dt.strftime('%Y-%m-%d')
         # === End Data Processing ===
 
         # Write the original sheets plus the cleaned data into a new Excel file in memory.
