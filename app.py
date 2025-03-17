@@ -12,8 +12,7 @@ def index():
             return "No file uploaded", 400
 
         try:
-            # Read the Excel file into a DataFrame.
-            # By default, pd.read_excel reads the first sheet.
+            # Read the Excel file into a DataFrame (reads the first sheet by default)
             df = pd.read_excel(file)
         except Exception as e:
             return f"Error reading Excel file: {e}", 400
@@ -22,12 +21,11 @@ def index():
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False)
-            writer.save()
         output.seek(0)
 
         return send_file(
             output,
-            attachment_filename="processed.xlsx",
+            download_name="processed.xlsx",  # use 'download_name' for Flask 2.x+
             as_attachment=True,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
