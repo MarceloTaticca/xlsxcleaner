@@ -1,6 +1,7 @@
 from flask import Flask, request, send_file, render_template
 import pandas as pd
 import io
+from openpyxl import load_workbook
 
 app = Flask(__name__)
 
@@ -10,16 +11,18 @@ def index():
         file = request.files.get('file')
         if not file:
             return "No file uploaded", 400
-        
+
         try:
-            # Read all sheets from the Excel file using the openpyxl engine.
-            xls = pd.read_excel(file, sheet_name=None, engine='openpyxl')
+            # Read the file bytes once so we can use it for both pandas and openpyxl.
+            file_data = file.read()
+            # Create two BytesIO streams from the same data.
+            file_bytes_for_pandas = io.BytesIO(file_data)
+            file_bytes_for_openpyxl = io.BytesIO(file_data)
+            
+            # Read only the first sheet using pandas (by default, read_excel reads the first sheet)
+            df = pd.read_excel(file_bytes_for_pandas, engine='openpyxl')
         except Exception as e:
             return f"Error reading Excel file: {e}", 400
-
-        # Get the first sheet's name and its data.
-        first_sheet_name = list(xls.keys())[0]
-        df = xls[first_sheet_name]
 
         # === Begin Data Processing (cleaning steps) ===
         # Filter rows where either 'Unnamed: 2' or 'Unnamed: 5' is not null.
@@ -70,15 +73,30 @@ def index():
         ).dt.strftime('%Y-%m-%d')
         # === End Data Processing ===
 
-        # Write the original sheets plus the cleaned data into a new Excel file (in memory).
+        # Load the original workbook using openpyxl.
+        try:
+            wb = load_workbook(file_bytes_for_openpyxl)
+        except Exception as e:
+            return f"Error loading workbook with openpyxl: {e}", 400
+
+        # (Optional) Remove an existing sheet named 'Cleaned Data' if it exists.
+        if 'Cleaned Data' in wb.sheetnames:
+            std = wb['Cleaned Data']
+            wb.remove(std)
+
+        # Create a new sheet for the cleaned data.
+        ws = wb.create_sheet(title='Cleaned Data')
+        
+        # Write the DataFrame to the new sheet.
+        # First, write the column headers.
+        ws.append(list(df_cleaned.columns))
+        # Then, write each row of data.
+        for row in df_cleaned.itertuples(index=False, name=None):
+            ws.append(list(row))
+        
+        # Save the modified workbook to an in-memory file.
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            # Write each original sheet back into the workbook.
-            for sheet_name, dataframe in xls.items():
-                dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
-            # Add a new sheet for the cleaned data.
-            df_cleaned.to_excel(writer, sheet_name='Cleaned Data', index=False)
-            writer.save()
+        wb.save(output)
         output.seek(0)
 
         return send_file(
