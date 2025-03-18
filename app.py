@@ -40,7 +40,7 @@ def index():
             )]
 
             # Rename columns to the desired names
-            df_cleaned.columns = ['data', 'plano', 'origem', 'histÛrico', 'valor', 'operaÁ„o', 'usu·rio']
+            df_cleaned.columns = ['data', 'plano', 'origem', 'histórico', 'valor', 'operação', 'usuário']
 
             # Convert "valor" column from Brazilian format to numeric floats
             df_cleaned['valor'] = (
