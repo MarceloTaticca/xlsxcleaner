@@ -12,26 +12,73 @@ def index():
             return "No file uploaded", 400
 
         try:
-            # Read the Excel file into a DataFrame (reads the first sheet by default)
+            # Read the uploaded Excel file (first sheet by default)
             df = pd.read_excel(file)
         except Exception as e:
             return f"Error reading Excel file: {e}", 400
+        
+        try:
+            # --- Begin cleaning logic from Code B ---
+            # Filter rows: keep rows where either 'Unnamed: 2' or 'Unnamed: 5' is not null
+            filter_condition = (~df['Unnamed: 2'].isnull()) | (~df['Unnamed: 5'].isnull())
+            df = df[filter_condition]
 
-        # Create an in-memory output file for the new Excel file.
+            # Drop columns where all values are NaN, empty, or whitespace
+            df_cleaned = df.loc[:, ~df.apply(
+                lambda col: col.astype(str).str.strip().replace('nan', '').eq('').all()
+            )]
+
+            # Forward-fill 'Unnamed: 5'
+            df_cleaned.loc[:, 'Unnamed: 5'] = df_cleaned['Unnamed: 5'].ffill()
+
+            # Remove extra header rows by keeping only rows where 'Unnamed: 2' is not null
+            df_cleaned = df_cleaned[~df_cleaned['Unnamed: 2'].isnull()]
+
+            # Drop columns where all values are NaN, empty, or whitespace (again)
+            df_cleaned = df_cleaned.loc[:, ~df_cleaned.apply(
+                lambda col: col.astype(str).str.strip().replace('nan', '').eq('').all()
+            )]
+
+            # Rename columns to the desired names
+            df_cleaned.columns = ['data', 'plano', 'origem', 'histÛrico', 'valor', 'operaÁ„o', 'usu·rio']
+
+            # Convert "valor" column from Brazilian format to numeric floats
+            df_cleaned['valor'] = (
+                df_cleaned['valor']
+                .astype(str)
+                .str.replace('.', '', regex=False)   # remove thousand separator '.'
+                .str.replace(',', '.', regex=False)    # replace decimal ',' with '.'
+                .replace('', '0')                      # handle empty strings
+                .astype(float)
+            )
+
+            # Convert "data" column to datetime (format: YYYY-MM-DD)
+            df_cleaned['data'] = pd.to_datetime(
+                df_cleaned['data'], format='%d/%m/%Y', errors='coerce'
+            ).dt.strftime('%Y-%m-%d')
+            # --- End cleaning logic ---
+        except Exception as e:
+            return f"Error processing Excel file: {e}", 400
+
+        # Prepare an in-memory output Excel file with two sheets: Cleaned Data & Summary
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False)
-             # Create a new sheet "Summary" with sample summary information.
-            summary_df = pd.DataFrame({
-                "Note": ["This is the summary sheet."],
-                "Total Rows": [len(df)]
-            })
-            summary_df.to_excel(writer, index=False, sheet_name='Summary')
-        output.seek(0)
+        try:
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                # Write the cleaned data to a sheet named "Cleaned Data"
+                df_cleaned.to_excel(writer, index=False, sheet_name='Cleaned Data')
+                # Create a summary sheet with sample summary information
+                summary_df = pd.DataFrame({
+                    "Note": ["This file contains cleaned data."],
+                    "Total Rows": [len(df_cleaned)]
+                })
+                summary_df.to_excel(writer, index=False, sheet_name='Summary')
+            output.seek(0)
+        except Exception as e:
+            return f"Error writing Excel file: {e}", 500
 
         return send_file(
             output,
-            download_name="processed.xlsx",  # use 'download_name' for Flask 2.x+
+            download_name="cleaned_processed.xlsx",  # Flask 2.x+ parameter
             as_attachment=True,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
