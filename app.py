@@ -60,18 +60,12 @@ def index():
         except Exception as e:
             return f"Error processing Excel file: {e}", 400
 
-        # Prepare an in-memory output Excel file with two sheets: Cleaned Data & Summary
+        # Prepare an in-memory output Excel file with cleaned data only
         output = io.BytesIO()
         try:
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 # Write the cleaned data to a sheet named "Cleaned Data"
                 df_cleaned.to_excel(writer, index=False, sheet_name='Cleaned Data')
-                # Create a summary sheet with sample summary information
-                summary_df = pd.DataFrame({
-                    "Note": ["This file contains cleaned data."],
-                    "Total Rows": [len(df_cleaned)]
-                })
-                summary_df.to_excel(writer, index=False, sheet_name='Summary')
             output.seek(0)
         except Exception as e:
             return f"Error writing Excel file: {e}", 500
